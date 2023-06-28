@@ -21,7 +21,7 @@ struct fsm_st{
    ssize_t bytes_read;
    char buf[BUFSIZE];
 } fsm_st;
-
+//状态机
 void drive(struct fsm_st * st){
 	switch(st->status){
 		case STAT_R:
