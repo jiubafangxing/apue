@@ -9,17 +9,19 @@
 #define TTY2 "/dev/tty12"
 #define BUFSIZE 1024
 enum {
- STAT_R = 1,
- STAT_W,
- STAT_EX,
- STAT_T
+	STAT_R = 1,
+	STAT_W,
+	STAT_EX,
+	STAT_T
 };
 struct fsm_st{
-   int status;
-   int source;
-   int dest;
-   ssize_t bytes_read;
-   char buf[BUFSIZE];
+	int status;
+	int source;
+	int dest;
+	int position;
+	char * errmsg;
+	ssize_t bytes_read;
+	char buf[BUFSIZE];
 } fsm_st;
 //状态机
 void drive(struct fsm_st * st){
@@ -32,14 +34,46 @@ void drive(struct fsm_st * st){
 				if(errno == EAGAIN){
 					st -> status = STAT_R;
 				}else{
-				
+					st -> errmsg = "read error";
 					st -> status = STAT_EX;
 				}	
 			}else{
 				st -> status = STAT_W;
 			}
 			break;
+		case STAT_W:
+			if(st-> bytes_read > 0){
+				int writed = 	write(st->dest, st->buf,st->bytes_read);
+				if(writed < 0){
+					if(errno == EAGAIN){
+						st -> status = STAT_W;
+					}else{
+
+						st -> errmsg = "write error";
+						st -> status = STAT_EX;
+					}
+
+				}else {
+					st -> bytes_read  -= writed;
+					st -> position += writed;
+					if(st -> bytes_read > 0){
+						st -> status = STAT_W;
+					}else{
+
+						st -> status = STAT_R;
+					}
+				}
+			}
+			break;
+		case STAT_EX:
+			st -> status = STAT_T;
+			perror(st->errmsg);
+			break;
+		case STAT_T:
+
+			break;
 		default:
+			abort();
 			break;
 	}
 }
@@ -59,8 +93,10 @@ void relayer(int fd1 , int fd2 ){
 	st2.source= fd2;
 	st2.dest = fd1;
 	st2.status = STAT_R;
-	drive(&st1);
-	drive(&st2);
+	while(st1.status != STAT_T && st2.status != STAT_T){
+		drive(&st1);
+		drive(&st2);
+	}
 	// rollback old status
 	fcntl(fd1,save1);
 	fcntl(fd2,save2);
@@ -68,7 +104,15 @@ void relayer(int fd1 , int fd2 ){
 
 int main(int argc, char * argv[]){
 	int fd1 = open(TTY1,O_RDWR);
+	if(fd1 < 0){
+		perror("open()");
+		exit(1);
+	}
 	int fd2 = open(TTY2,O_RDWR);
+	if(fd2 < 0){
+		perror("open()");
+		exit(1);
+	}
 	relayer(fd1,fd2);
 	close(fd1);
 	close(fd2);
