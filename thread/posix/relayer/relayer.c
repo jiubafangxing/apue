@@ -129,9 +129,9 @@ int relayer_init(int fd1, int fd2){
 	struct relayer_st * relayst; 
 	relayst = malloc(sizeof(* relayst))	;
 	relayst -> save1 = fcntl(fd1,F_GETFD);
-	fcntl(fd1,relayst->save1|O_NONBLOCK);
+	fcntl(fd1,F_SETFD,relayst->save1|O_NONBLOCK);
 	relayst -> save2= fcntl(fd2,F_GETFD);
-	fcntl(fd2, relayst->save2|O_NONBLOCK);
+	fcntl(fd2,F_SETFD, relayst->save2|O_NONBLOCK);
 
 	struct fsm_st st1;
 	st1.source= fd1;

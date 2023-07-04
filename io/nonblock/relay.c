@@ -94,6 +94,7 @@ void relayer(int fd1 , int fd2 ){
 	st2.dest = fd1;
 	st2.status = STAT_R;
 	while(st1.status != STAT_T && st2.status != STAT_T){
+		
 		drive(&st1);
 		drive(&st2);
 	}
