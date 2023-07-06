@@ -11,6 +11,7 @@
 enum {
 	STAT_R = 1,
 	STAT_W,
+	STAT_AUTO,
 	STAT_EX,
 	STAT_T
 };
@@ -23,6 +24,14 @@ struct fsm_st{
 	ssize_t bytes_read;
 	char buf[BUFSIZE];
 } fsm_st;
+
+int max(int fd1, int fd2){
+	if(fd1 > fd2){
+		return fd1;
+	}else{
+		return fd2;
+	}
+}
 //状态机
 void drive(struct fsm_st * st){
 	int writed = 0;
@@ -44,26 +53,26 @@ void drive(struct fsm_st * st){
 			}
 			break;
 		case STAT_W:
-		 	 writed = 	write(st->dest, st->buf + st->position,st->bytes_read);
-			
-				if(writed < 0){
-					if(errno == EAGAIN){
-						st -> status = STAT_W;
-					}else{
-						printf("error writeing\n ");
-						st -> errmsg = "write error";
-						st -> status = STAT_EX;
-					}
+			writed = 	write(st->dest, st->buf + st->position,st->bytes_read);
 
-				}else {
-					st -> bytes_read  -= writed;
-					st -> position += writed;
-					if(st -> bytes_read == 0){
-						st -> status = STAT_R;
-					}else{
-						st -> status = STAT_W;
-					}
+			if(writed < 0){
+				if(errno == EAGAIN){
+					st -> status = STAT_W;
+				}else{
+					printf("error writeing\n ");
+					st -> errmsg = "write error";
+					st -> status = STAT_EX;
 				}
+
+			}else {
+				st -> bytes_read  -= writed;
+				st -> position += writed;
+				if(st -> bytes_read == 0){
+					st -> status = STAT_R;
+				}else{
+					st -> status = STAT_W;
+				}
+			}
 			break;
 		case STAT_EX:
 			st -> status = STAT_T;
@@ -93,10 +102,41 @@ void relayer(int fd1 , int fd2 ){
 	st2.source= fd2;
 	st2.dest = fd1;
 	st2.status = STAT_R;
+
 	while(st1.status != STAT_T && st2.status != STAT_T){
-		
-		drive(&st1);
-		drive(&st2);
+
+		fd_set rfds;
+		fd_set wfds;
+		FD_ZERO(&rfds);
+		FD_ZERO(&wfds);
+		if(st1.status == STAT_R){
+			FD_SET(st1.source, &rfds);	
+		}
+		if(st1.status == STAT_W){
+			FD_SET(st1.dest, &wfds);
+		}
+		if(st2.status == STAT_R){
+			FD_SET(st2.source, &rfds);	
+		}
+		if(st2.status == STAT_W){
+			FD_SET(st2.dest, &wfds);	
+		}
+		if(st1.status < STAT_AUTO || st2.status <STAT_AUTO){
+			if(select(max(fd1, fd2)+1, &rfds,&wfds, NULL,NULL) <0){
+				if(errno == EINTR ){
+					continue;
+				}
+				perror("select ()");
+				exit(1);
+			}
+		}
+		if(FD_ISSET(fd1,&rfds) || FD_ISSET(fd2, &wfds) || st1.status > STAT_AUTO){
+			drive(&st1);
+		}
+		if(FD_ISSET(fd2,&rfds) || FD_ISSET(fd1, &wfds) || st2.status > STAT_AUTO){
+			drive(&st2);
+		}
+
 	}
 	// rollback old status
 	fcntl(fd1,save1);
